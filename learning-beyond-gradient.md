@@ -26,6 +26,7 @@ Continual Learning 一直难以被解决，主要卡在神经网络的灾难性�
 - 一个打砖块游戏 Atari Breakout，策略从 `387 -> 507 -> 839 -> 864`，最后打到理论最高分；
 - 一个仿真四足机器人关节控制任务 MuJoCo Ant，纯 Python 程序策略先学会节律步态，再接上短视窗模型规划，最后上了 `6000+` 分，进入常见 Deep RL 结果的量级；
 - 一个仿真机器人跑步任务 MuJoCo HalfCheetah，靠可解释的步态/姿态规则和在线规划，迭代到 5 局复测均值 `11836.7`，也进入了常见 Deep RL 结果的量级；
+- 一个第一人称视觉控制任务 VizDoom，只用 cv2/NumPy 搓屏幕 CV、不训练神经网络，D3 Battle 的 10 seeds 结果也能到 `mean=557.0`、`min=440.0`；
 - 一整套 Atari 57 个游戏，一共跑了 57 个游戏 x 2 种输入 x 3 次运行 = 342 条 coding-agent 搜索轨迹，表现有好有坏；但在固定环境交互步数下，中位数 HNS 游戏得分在 `1M` 环境步附近已经远高于 PPO 这类 Deep RL 算法的曲线。
 
 这些结果第一次见到十分震撼，更让我在意的是：codex 没有训练神经网络，它在维护一套还能继续生长的软件系统。
@@ -401,6 +402,22 @@ HalfCheetah 是同一类证据的另一个点。我重新跑了 `mpc-staged-tree
 
 [![HalfCheetah 样本效率](mujoco/halfcheetah/heuristic_halfcheetah_sample_efficiency.png)][heuristic_halfcheetah_sample_efficiency.png]
 
+#### VizDoom
+
+相关 artifact：[heuristic_vizdoom_d1_cv.py]、[heuristic_vizdoom_d3_cv.py]、[record_vizdoom_d3_cv.py]、[d1_cv_10seed_render_35fps.mp4]、[d3_cv_best_10seed_render_35fps.mp4]。
+
+D1 Basic 是先验证“只要能等到合适时机吃血包，reward 就接近上限”的小实验。我先用 object/info 版本确认行为上限，10 seeds 接近 `1.01`；然后把不可复现的信息删掉，只保留 pip EnvPool、`render()` 屏幕像素和公开的 `HEALTH`。最终纯 CV 版用亮度阈值、形态学 close/dilate 和连通域找 medikit，用 bbox 中心决定转向/前进；血量还高且离血包太近时先 staging，等掉血后再吃。10 seeds 是 `mean=0.9441`、`min=0.2900`。
+
+<video controls src="vizdoom/d1_cv_10seed_render_35fps.mp4" width="480"></video>
+
+视频 artifact：[d1_cv_10seed_render_35fps.mp4]。
+
+D3 Battle 更接近 FPS smoke policy：它不是背地图，而是把行为拆成三个闭环：看见怪就杀、低血/低弹时找补给、长时间没目标时高速探索。屏幕侧用 cv2/NumPy 做颜色阈值和连通域，提取 enemy candidate、ammo/health item candidate、墙面/洞口的暗区比例；EnvPool info 只用公开 game variables，比如 `HEALTH`、`AMMO2`、`HITCOUNT`、`DAMAGECOUNT`、`KILLCOUNT`。迭代方式是每次并行跑 10 个 seed，再直接用 `render()` 录 35fps 10-grid 视频看失败类型。早期试过地图、object info 和 seed 特判，后面都删掉了；保留下来的是屏幕 CV + 公开变量的闭环控制。10 seeds 是 `mean=557.0`、`min=440.0`。
+
+<video controls src="vizdoom/d3_cv_best_10seed_render_35fps.mp4" width="480"></video>
+
+视频 artifact：[d3_cv_best_10seed_render_35fps.mp4]。
+
 #### Atari57
 
 相关 artifact：[atari57_prompt_template.txt]、[atari57_aggregate_curve_steps.csv]、[atari57_env_mode_summary.csv]、[openrl_atari57_per_game_hns_comparison.csv]、[atari57_hns_normalization_inferred.csv]。
@@ -652,6 +669,41 @@ python mujoco/halfcheetah/heuristic_halfcheetah_v5.py \
 
 我本地重跑时 5 局均值是 `11836.693`。
 
+#### VizDoom D1 Basic CV 策略
+
+复现入口：[heuristic_vizdoom_d1_cv.py]。
+
+```bash
+python vizdoom/heuristic_vizdoom_d1_cv.py --episodes 10 --seed 0
+```
+
+我本地重跑时是 `mean=0.9440999741666019`、`min=0.28999998047947884`。这个版本只依赖 pip 的 EnvPool；不需要 `vizdoom` Python 包，也不需要任何本地编译扩展。
+
+要重新生成 35fps 视频：
+
+```bash
+python vizdoom/heuristic_vizdoom_d1_cv.py \
+  --episodes 10 \
+  --seed 0 \
+  --record-mp4 vizdoom/d1_cv_10seed_render_35fps.mp4
+```
+
+#### VizDoom D3 Battle CV 策略
+
+复现入口：[heuristic_vizdoom_d3_cv.py]、[record_vizdoom_d3_cv.py]。
+
+```bash
+python vizdoom/heuristic_vizdoom_d3_cv.py
+```
+
+我本地重跑时是 `mean=557.0`、`min=440.0`，10 个 seed 的奖励是 `[545, 475, 480, 440, 690, 500, 600, 595, 530, 715]`。
+
+要重新生成 35fps 视频：
+
+```bash
+python vizdoom/record_vizdoom_d3_cv.py
+```
+
 #### Montezuma 400 分回放
 
 复现入口：[heuristic_montezuma_400_policy.py]。
@@ -665,7 +717,7 @@ python atari/montezuma/heuristic_montezuma_400_policy.py \
 
 ## 评论
 
-如果想评论、提问或补充，请到 repo 里开 issue：[https://github.com/Trinkle23897/learning-beyond-gradients/issues](https://github.com/Trinkle23897/learning-beyond-gradients/issues)。
+<div class="github-issue-comments" data-lang="zh" data-repo="Trinkle23897/learning-beyond-gradients" data-issue-url="https://github.com/Trinkle23897/learning-beyond-gradients/issues/new?title=Comment%3A%20Learning%20Beyond%20Gradients"></div>
 
 [heuristic_breakout.py]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/atari/breakout/heuristic_breakout.py
 [heuristic_breakout_trials.jsonl]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/atari/breakout/heuristic_breakout_trials.jsonl
@@ -684,6 +736,11 @@ python atari/montezuma/heuristic_montezuma_400_policy.py \
 [heuristic_halfcheetah_v5.py]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/mujoco/halfcheetah/heuristic_halfcheetah_v5.py
 [heuristic_halfcheetah_v5_log.md]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/mujoco/halfcheetah/heuristic_halfcheetah_v5_log.md
 [heuristic_halfcheetah_sample_efficiency.png]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/mujoco/halfcheetah/heuristic_halfcheetah_sample_efficiency.png
+[heuristic_vizdoom_d3_cv.py]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/vizdoom/heuristic_vizdoom_d3_cv.py
+[record_vizdoom_d3_cv.py]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/vizdoom/record_vizdoom_d3_cv.py
+[heuristic_vizdoom_d1_cv.py]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/vizdoom/heuristic_vizdoom_d1_cv.py
+[d3_cv_best_10seed_render_35fps.mp4]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/vizdoom/d3_cv_best_10seed_render_35fps.mp4
+[d1_cv_10seed_render_35fps.mp4]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/vizdoom/d1_cv_10seed_render_35fps.mp4
 [atari57_prompt_template.txt]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/atari/atari57/atari57_prompt_template.txt
 [atari57_aggregate_curve_steps.csv]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/atari/atari57/atari57_aggregate_curve_steps.csv
 [atari57_env_mode_summary.csv]: https://github.com/Trinkle23897/learning-beyond-gradients/blob/main/atari/atari57/atari57_env_mode_summary.csv
